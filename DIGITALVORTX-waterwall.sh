@@ -73,7 +73,7 @@ menu() {
 }
 
 init() {
-    menu "| 1 - INSTALL CORE \n| 2  - Config HalfDuplex Tunnel \n| 3  - Status Tunnel  \n| 4  - Start Tunnel  \n| 5  - Stop Tunnel  \n| 9 - Uninstall \n| 0  - Exit"
+    menu "| 1 - INSTALL CORE \n| 2  - Config HalfDuplex Tunnel \n| 3  - Manage Multiple Configs (Foreign Server) \n| 4  - Status Tunnel  \n| 5  - Start Tunnel  \n| 6  - Stop Tunnel  \n| 9 - Uninstall \n| 0  - Exit"
     
     read -p "Enter option number: " choice
     case $choice in
@@ -84,12 +84,15 @@ init() {
         halfduplex_config
         ;;
     3)
-        check_status
+        manage_multiple_configs
         ;;
     4)
-        start_tunnel
+        check_status
         ;;
     5)
+        start_tunnel
+        ;;
+    6)
         stop_tunnel
         ;;
     9)
@@ -272,6 +275,12 @@ config_iran_server() {
 EOL
 
     sudo chmod 644 "$WATERWALL_DIR/dev-ir.json"
+    
+    # Update core.json
+    if [ -f "$WATERWALL_DIR/core.json" ]; then
+        update_core_json
+    fi
+    
     echo -e "\n${GREEN}✓ Iran server configuration created successfully!${NC}"
     echo -e "${GREEN}Configuration saved to: $WATERWALL_DIR/dev-ir.json${NC}\n"
     
@@ -282,6 +291,10 @@ EOL
 config_foreign_server() {
     echo -e "\n${YELLOW}=== Kharej/Foreign Server Configuration ===${NC}\n"
     
+    # Get config name
+    read -p "Enter config name [foreign-server-1]: " config_name
+    config_name=${config_name:-foreign-server-1}
+    
     # Get listener settings
     read -p "Enter listener address [0.0.0.0]: " listener_address
     listener_address=${listener_address:-0.0.0.0}
@@ -290,24 +303,19 @@ config_foreign_server() {
     read -p "Listener ports: " listener_ports
     listener_ports=$(parse_ports "$listener_ports")
     
-    # Get Iran server IP
-    read -p "Enter IRAN Server IP: " iran_ip
-    if [ -z "$iran_ip" ]; then
-        echo -e "${RED}Error: IRAN Server IP is required${NC}"
-        sleep 2
-        config_foreign_server
-        return
-    fi
-    
-    echo -e "${YELLOW}Enter connector ports to IRAN Server (single: 8447, multiple: 8447,8448,8449, range: 8447-8450, or array: [8447,8450]):${NC}"
+    # Only ask for connector ports (IP is always 127.0.0.1)
+    echo -e "${YELLOW}Enter connector ports to localhost (single: 8447, multiple: 8447,8448,8449, range: 8447-8450, or array: [8447,8450]):${NC}"
+    echo -e "${BLUE}Note: Connector will connect to 127.0.0.1${NC}"
     read -p "Connector ports: " connector_ports
     connector_ports=$(parse_ports "$connector_ports")
     
     # Create config file in /waterwall directory
     sudo mkdir -p "$WATERWALL_DIR"
-    cat <<EOL | sudo tee "$WATERWALL_DIR/dev-ir.json" > /dev/null
+    config_file="$WATERWALL_DIR/${config_name}.json"
+    
+    cat <<EOL | sudo tee "$config_file" > /dev/null
 {
-  "name": "foreign_server_config",
+  "name": "${config_name}",
   "nodes": [
     {
       "name": "foreign_multi_port_listener",
@@ -330,7 +338,7 @@ config_foreign_server() {
       "name": "iran_connector",
       "type": "TcpConnector",
       "settings": {
-        "address": "$iran_ip",
+        "address": "127.0.0.1",
         "port": $connector_ports,
         "nodelay": true,
         "fastopen": false,
@@ -342,12 +350,190 @@ config_foreign_server() {
 }
 EOL
 
-    sudo chmod 644 "$WATERWALL_DIR/dev-ir.json"
+    sudo chmod 644 "$config_file"
+    
+    # Update core.json to include this config
+    update_core_json
+    
     echo -e "\n${GREEN}✓ Foreign server configuration created successfully!${NC}"
-    echo -e "${GREEN}Configuration saved to: $WATERWALL_DIR/dev-ir.json${NC}\n"
+    echo -e "${GREEN}Configuration saved to: $config_file${NC}"
+    echo -e "${GREEN}Config added to core.json${NC}\n"
     
     read -p "Press Enter to continue..."
     init
+}
+
+# Function to update core.json with all config files
+update_core_json() {
+    if [ ! -f "$WATERWALL_DIR/core.json" ]; then
+        echo -e "${YELLOW}core.json not found. Creating...${NC}"
+        create_core_json
+        return
+    fi
+    
+    # Get all JSON config files in /waterwall
+    config_files=()
+    while IFS= read -r file; do
+        filename=$(basename "$file")
+        config_files+=("$filename")
+    done < <(sudo find "$WATERWALL_DIR" -maxdepth 1 -name "*.json" -not -name "core.json" 2>/dev/null)
+    
+    # If no configs found, use default
+    if [ ${#config_files[@]} -eq 0 ]; then
+        config_files=("dev-ir.json")
+    fi
+    
+    # Create updated core.json
+    cat <<EOL | sudo tee "$WATERWALL_DIR/core.json" > /dev/null
+{
+    "log": {
+        "path": "log/",
+        "core": {
+            "loglevel": "DEBUG",
+            "file": "core.log",
+            "console": true
+        },
+        "network": {
+            "loglevel": "DEBUG",
+            "file": "network.log",
+            "console": true
+        },
+        "dns": {
+            "loglevel": "SILENT",
+            "file": "dns.log",
+            "console": false
+        }
+    },
+    "dns": {},
+    "misc": {
+        "workers": 0,
+        "ram-profile": "server",
+        "libs-path": "libs/"
+    },
+    "configs": [
+$(printf '        "%s"' "${config_files[0]}")
+$(for ((i=1; i<${#config_files[@]}; i++)); do
+    printf ',\n        "%s"' "${config_files[$i]}"
+done)
+    ]
+}
+EOL
+
+    sudo chmod 644 "$WATERWALL_DIR/core.json"
+}
+
+# Function to create initial core.json
+create_core_json() {
+    cat <<EOL | sudo tee "$WATERWALL_DIR/core.json" > /dev/null
+{
+    "log": {
+        "path": "log/",
+        "core": {
+            "loglevel": "DEBUG",
+            "file": "core.log",
+            "console": true
+        },
+        "network": {
+            "loglevel": "DEBUG",
+            "file": "network.log",
+            "console": true
+        },
+        "dns": {
+            "loglevel": "SILENT",
+            "file": "dns.log",
+            "console": false
+        }
+    },
+    "dns": {},
+    "misc": {
+        "workers": 0,
+        "ram-profile": "server",
+        "libs-path": "libs/"
+    },
+    "configs": [
+        "dev-ir.json"
+    ]
+}
+EOL
+
+    sudo chmod 644 "$WATERWALL_DIR/core.json"
+}
+
+# Function to manage multiple configs
+manage_multiple_configs() {
+    clear
+    echo -e "${YELLOW}=== Manage Multiple Configs (Foreign Server) ===${NC}\n"
+    
+    # List existing configs
+    config_files=()
+    while IFS= read -r file; do
+        filename=$(basename "$file" .json)
+        config_files+=("$filename")
+    done < <(sudo find "$WATERWALL_DIR" -maxdepth 1 -name "*.json" -not -name "core.json" 2>/dev/null)
+    
+    if [ ${#config_files[@]} -eq 0 ]; then
+        echo -e "${RED}No config files found!${NC}"
+        read -p "Press Enter to continue..."
+        init
+        return
+    fi
+    
+    echo -e "${GREEN}Existing configs:${NC}"
+    for ((i=0; i<${#config_files[@]}; i++)); do
+        echo -e "  $((i+1)). ${config_files[$i]}.json"
+    done
+    
+    echo ""
+    echo -e "${YELLOW}Options:${NC}"
+    echo "  1 - Create new config"
+    echo "  2 - Delete config"
+    echo "  3 - View config"
+    echo "  0 - Back to main menu"
+    
+    read -p "Enter option: " option
+    
+    case $option in
+    1)
+        config_foreign_server
+        ;;
+    2)
+        echo ""
+        read -p "Enter config number to delete: " num
+        if [ "$num" -ge 1 ] && [ "$num" -le ${#config_files[@]} ]; then
+            idx=$((num-1))
+            config_name="${config_files[$idx]}"
+            sudo rm -f "$WATERWALL_DIR/${config_name}.json"
+            update_core_json
+            echo -e "${GREEN}Config ${config_name}.json deleted!${NC}"
+        else
+            echo -e "${RED}Invalid number!${NC}"
+        fi
+        sleep 2
+        manage_multiple_configs
+        ;;
+    3)
+        echo ""
+        read -p "Enter config number to view: " num
+        if [ "$num" -ge 1 ] && [ "$num" -le ${#config_files[@]} ]; then
+            idx=$((num-1))
+            config_name="${config_files[$idx]}"
+            echo -e "\n${YELLOW}Content of ${config_name}.json:${NC}"
+            sudo cat "$WATERWALL_DIR/${config_name}.json" | jq '.' 2>/dev/null || sudo cat "$WATERWALL_DIR/${config_name}.json"
+        else
+            echo -e "${RED}Invalid number!${NC}"
+        fi
+        read -p "Press Enter to continue..."
+        manage_multiple_configs
+        ;;
+    0)
+        init
+        ;;
+    *)
+        echo "Invalid option"
+        sleep 2
+        manage_multiple_configs
+        ;;
+    esac
 }
 
 install_core() {
@@ -457,37 +643,7 @@ install_core() {
     fi
     
     # Create core.json
-    cat <<EOL > core.json
-{
-    "log": {
-        "path": "log/",
-        "core": {
-            "loglevel": "DEBUG",
-            "file": "core.log",
-            "console": true
-        },
-        "network": {
-            "loglevel": "DEBUG",
-            "file": "network.log",
-            "console": true
-        },
-        "dns": {
-            "loglevel": "SILENT",
-            "file": "dns.log",
-            "console": false
-        }
-    },
-    "dns": {},
-    "misc": {
-        "workers": 0,
-        "ram-profile": "server",
-        "libs-path": "libs/"
-    },
-    "configs": [
-        "dev-ir.json"
-    ]
-}
-EOL
+    create_core_json
 
     # Create log and libs directories
     mkdir -p log libs
@@ -611,12 +767,27 @@ check_status() {
         echo -e "${RED}Core: Not installed${NC}"
     fi
     
-    if [ -f "$WATERWALL_DIR/dev-ir.json" ]; then
-        echo -e "${GREEN}Tunnel Config: Exists${NC}"
-        echo -e "\n${YELLOW}Configuration:${NC}"
-        cat "$WATERWALL_DIR/dev-ir.json" | jq '.' 2>/dev/null || cat "$WATERWALL_DIR/dev-ir.json"
+    # List all config files
+    config_files=()
+    while IFS= read -r file; do
+        filename=$(basename "$file")
+        config_files+=("$filename")
+    done < <(sudo find "$WATERWALL_DIR" -maxdepth 1 -name "*.json" -not -name "core.json" 2>/dev/null)
+    
+    if [ ${#config_files[@]} -gt 0 ]; then
+        echo -e "${GREEN}Tunnel Configs: Found ${#config_files[@]} config(s)${NC}"
+        for config in "${config_files[@]}"; do
+            echo -e "\n${YELLOW}Config: $config${NC}"
+            sudo cat "$WATERWALL_DIR/$config" | jq '.' 2>/dev/null | head -n 20 || sudo head -n 20 "$WATERWALL_DIR/$config"
+        done
     else
         echo -e "${RED}Tunnel Config: Not found${NC}"
+    fi
+    
+    # Show core.json configs section
+    if [ -f "$WATERWALL_DIR/core.json" ]; then
+        echo -e "\n${YELLOW}Configs in core.json:${NC}"
+        sudo cat "$WATERWALL_DIR/core.json" | jq '.configs' 2>/dev/null || echo "Could not parse core.json"
     fi
     
     echo ""
