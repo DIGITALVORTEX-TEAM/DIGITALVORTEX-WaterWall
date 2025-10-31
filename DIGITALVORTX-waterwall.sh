@@ -106,15 +106,46 @@ init() {
     esac
 }
 
-# Function to parse port input (supports single port, comma-separated, or range)
+# Function to parse port input (supports single port, comma-separated, array format, or range)
 parse_ports() {
     local input="$1"
     
     # Remove spaces
     input=$(echo "$input" | tr -d ' ')
     
-    # Check if it's a range (e.g., 8447-8450)
-    if [[ "$input" == *-* ]]; then
+    # Check if it's an array format like [8447, 8450] or [3000, 2000]
+    if [[ "$input" =~ ^\[.*\]$ ]]; then
+        # Remove brackets
+        input="${input#\[}"
+        input="${input%\]}"
+        
+        # Check if it has comma (range in array format)
+        if [[ "$input" == *,* ]]; then
+            local start_port=$(echo "$input" | cut -d',' -f1)
+            local end_port=$(echo "$input" | cut -d',' -f2 | tr -d ' ')
+            
+            # Swap if start > end (supporting [3000, 2000] format)
+            if [ "$start_port" -gt "$end_port" ]; then
+                local temp=$start_port
+                start_port=$end_port
+                end_port=$temp
+            fi
+            
+            local ports=""
+            for ((port=start_port; port<=end_port; port++)); do
+                if [ -z "$ports" ]; then
+                    ports="$port"
+                else
+                    ports="$ports, $port"
+                fi
+            done
+            echo "[$ports]"
+        else
+            # Single port in array format [80]
+            echo "[$input]"
+        fi
+    # Check if it's a range with dash (e.g., 8447-8450)
+    elif [[ "$input" == *-* ]]; then
         local start_port=${input%-*}
         local end_port=${input#*-}
         local ports=""
@@ -126,10 +157,10 @@ parse_ports() {
             fi
         done
         echo "[$ports]"
-    # Check if it's comma-separated
+    # Check if it's comma-separated (e.g., 8447,8448,8449)
     elif [[ "$input" == *,* ]]; then
         echo "[$input]"
-    # Single port
+    # Single port (e.g., 80)
     else
         echo "$input"
     fi
@@ -188,7 +219,7 @@ config_iran_server() {
     read -p "Enter listener address [0.0.0.0]: " listener_address
     listener_address=${listener_address:-0.0.0.0}
     
-    echo -e "${YELLOW}Enter listener ports (single: 8447, multiple: 8447,8448,8449 or range: 8447-8450):${NC}"
+    echo -e "${YELLOW}Enter listener ports (single: 80, multiple: 8447,8448,8449, range: 8447-8450, or array: [8447,8450] or [3000,2000]):${NC}"
     read -p "Listener ports: " listener_ports
     listener_ports=$(parse_ports "$listener_ports")
     
@@ -201,7 +232,7 @@ config_iran_server() {
         return
     fi
     
-    echo -e "${YELLOW}Enter connector ports to Foreign Server (single: 8443, multiple: 8443,8444,8445 or range: 8443-8446):${NC}"
+    echo -e "${YELLOW}Enter connector ports to Foreign Server (single: 8443, multiple: 8443,8444,8445, range: 8443-8446, or array: [8443,8446]):${NC}"
     read -p "Connector ports: " connector_ports
     connector_ports=$(parse_ports "$connector_ports")
     
@@ -259,7 +290,7 @@ config_foreign_server() {
     read -p "Enter listener address [0.0.0.0]: " listener_address
     listener_address=${listener_address:-0.0.0.0}
     
-    echo -e "${YELLOW}Enter listener ports (single: 8443, multiple: 8443,8444,8445 or range: 8443-8446):${NC}"
+    echo -e "${YELLOW}Enter listener ports (single: 8443, multiple: 8443,8444,8445, range: 8443-8446, or array: [8443,8446] or [3000,2000]):${NC}"
     read -p "Listener ports: " listener_ports
     listener_ports=$(parse_ports "$listener_ports")
     
@@ -272,7 +303,7 @@ config_foreign_server() {
         return
     fi
     
-    echo -e "${YELLOW}Enter connector ports to IRAN Server (single: 8447, multiple: 8447,8448,8449 or range: 8447-8450):${NC}"
+    echo -e "${YELLOW}Enter connector ports to IRAN Server (single: 8447, multiple: 8447,8448,8449, range: 8447-8450, or array: [8447,8450]):${NC}"
     read -p "Connector ports: " connector_ports
     connector_ports=$(parse_ports "$connector_ports")
     
