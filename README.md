@@ -23,10 +23,10 @@
 
 ```bash
 # دانلود اسکریپت
-wget https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/DIGITALVORTX-waterwall.sh
+wget https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/DIGITALVORTX-waterwall.sh
 
 # یا با curl
-curl -O https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/DIGITALVORTX-waterwall.sh
+curl -O https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/DIGITALVORTX-waterwall.sh
 
 # اعطای دسترسی اجرا
 chmod +x DIGITALVORTX-waterwall.sh
