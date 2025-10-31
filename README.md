@@ -23,15 +23,18 @@
 
 ```bash
 # دانلود اسکریپت
-wget https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/DIGITALVORTX-waterwall.sh
+wget https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/main/DIGITALVORTX-waterwall.sh
 
 # یا با curl
-curl -O https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/DIGITALVORTX-waterwall.sh
+curl -O https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/main/DIGITALVORTX-waterwall.sh
 
-# اعطای دسترسی اجرا
+# یا دانلود و اجرای مستقیم
+bash <(curl -Ls https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/main/DIGITALVORTX-waterwall.sh)
+
+# یا clone کردن repository
+git clone https://github.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall.git
+cd DIGITALVORTEX-WaterWall
 chmod +x DIGITALVORTX-waterwall.sh
-
-# اجرای اسکریپت
 sudo ./DIGITALVORTX-waterwall.sh
 ```
 
@@ -188,10 +191,12 @@ sudo nano /waterwall/dev-ir.json
 
 ## 🔗 لینک‌های مفید
 
-- [مستندات WaterWall](https://radkesvat.github.io/WaterWall-Docs/)
-- [Installation Guide](https://radkesvat.github.io/WaterWall-Docs/docs/getting-started/installation)
-- [HalfDuplex Client](https://radkesvat.github.io/WaterWall-Docs/docs/noderefs/halfduplex-client)
-- [HalfDuplex Server](https://radkesvat.github.io/WaterWall-Docs/docs/noderefs/halfduplex-server)
+- 📦 [Repository GitHub](https://github.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall)
+- 📥 [دانلود مستقیم اسکریپت](https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/main/DIGITALVORTX-waterwall.sh)
+- 📚 [مستندات WaterWall](https://radkesvat.github.io/WaterWall-Docs/)
+- 📖 [Installation Guide](https://radkesvat.github.io/WaterWall-Docs/docs/getting-started/installation)
+- 🔌 [HalfDuplex Client](https://radkesvat.github.io/WaterWall-Docs/docs/noderefs/halfduplex-client)
+- 🔌 [HalfDuplex Server](https://radkesvat.github.io/WaterWall-Docs/docs/noderefs/halfduplex-server)
 
 ## 📌 نکات مهم
 
