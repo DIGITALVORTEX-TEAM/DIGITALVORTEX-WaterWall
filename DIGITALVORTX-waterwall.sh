@@ -107,6 +107,7 @@ init() {
 }
 
 # Function to parse port input (supports single port, comma-separated, array format, or range)
+# For ranges, outputs as [start, end] instead of listing all ports
 parse_ports() {
     local input="$1"
     
@@ -131,15 +132,8 @@ parse_ports() {
                 end_port=$temp
             fi
             
-            local ports=""
-            for ((port=start_port; port<=end_port; port++)); do
-                if [ -z "$ports" ]; then
-                    ports="$port"
-                else
-                    ports="$ports, $port"
-                fi
-            done
-            echo "[$ports]"
+            # Return as range format [start, end]
+            echo "[$start_port, $end_port]"
         else
             # Single port in array format [80]
             echo "[$input]"
@@ -148,15 +142,16 @@ parse_ports() {
     elif [[ "$input" == *-* ]]; then
         local start_port=${input%-*}
         local end_port=${input#*-}
-        local ports=""
-        for ((port=start_port; port<=end_port; port++)); do
-            if [ -z "$ports" ]; then
-                ports="$port"
-            else
-                ports="$ports, $port"
-            fi
-        done
-        echo "[$ports]"
+        
+        # Swap if start > end
+        if [ "$start_port" -gt "$end_port" ]; then
+            local temp=$start_port
+            start_port=$end_port
+            end_port=$temp
+        fi
+        
+        # Return as range format [start, end]
+        echo "[$start_port, $end_port]"
     # Check if it's comma-separated (e.g., 8447,8448,8449)
     elif [[ "$input" == *,* ]]; then
         echo "[$input]"
