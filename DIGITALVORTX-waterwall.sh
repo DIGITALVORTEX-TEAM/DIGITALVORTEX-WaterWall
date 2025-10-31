@@ -10,6 +10,7 @@ NC='\033[0m' # No Color
 
 cur_dir=$(pwd)
 WATERWALL_DIR="/waterwall"
+SERVICE_NAME="waterwall"
 
 install_jq() {
     if ! command -v jq &> /dev/null; then
@@ -244,7 +245,7 @@ config_iran_server() {
         "address": "$listener_address",
         "port": $listener_ports,
         "nodelay": true,
-        "multiport-backend": "iptables"
+        "multiport-backend": "socket"
       },
       "next": "halfduplex_client"
     },
@@ -315,7 +316,7 @@ config_foreign_server() {
         "address": "$listener_address",
         "port": $listener_ports,
         "nodelay": true,
-        "multiport-backend": "iptables"
+        "multiport-backend": "socket"
       },
       "next": "halfduplex_server"
     },
@@ -504,6 +505,38 @@ EOL
     init
 }
 
+# Create systemd service file
+create_systemd_service() {
+    if [ ! -f "$WATERWALL_DIR/Waterwall" ]; then
+        return 1
+    fi
+    
+    # Create systemd service file
+    cat <<EOL | sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null
+[Unit]
+Description=WaterWall HalfDuplex Tunnel Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$WATERWALL_DIR
+ExecStart=$WATERWALL_DIR/Waterwall
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=waterwall
+
+[Install]
+WantedBy=multi-user.target
+EOL
+
+    # Reload systemd daemon
+    sudo systemctl daemon-reload
+    return 0
+}
+
 start_tunnel() {
     if [ ! -f "$WATERWALL_DIR/dev-ir.json" ]; then
         echo -e "${RED}Error: dev-ir.json not found. Please configure tunnel first.${NC}"
@@ -519,52 +552,48 @@ start_tunnel() {
         return
     fi
     
+    # Check if service already exists, if not create it
+    if [ ! -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
+        echo -e "${YELLOW}Creating systemd service...${NC}"
+        create_systemd_service
+    fi
+    
     # Check if already running
-    if screen -list | grep -q "WaterWall"; then
-        echo -e "${YELLOW}WaterWall is already running!${NC}"
+    if systemctl is-active --quiet ${SERVICE_NAME}; then
+        echo -e "${YELLOW}WaterWall service is already running!${NC}"
         sleep 2
         init
         return
     fi
     
-    # Install screen if not available
-    if ! command -v screen &> /dev/null; then
-        echo "Screen is not installed. Installing..."
-        if command -v apt-get &> /dev/null; then
-            sudo apt-get update && sudo apt-get install -y screen
-        elif command -v yum &> /dev/null; then
-            sudo yum install -y screen
-        else
-            echo -e "${RED}Error: Cannot install screen. Please install manually.${NC}"
-            sleep 2
-            init
-            return
-        fi
+    # Start service
+    echo -e "${YELLOW}Starting WaterWall service...${NC}"
+    sudo systemctl start ${SERVICE_NAME}
+    
+    # Enable service to start on boot
+    sudo systemctl enable ${SERVICE_NAME} > /dev/null 2>&1
+    
+    if systemctl is-active --quiet ${SERVICE_NAME}; then
+        echo -e "${GREEN}✓ WaterWall service started successfully!${NC}"
+        echo -e "${YELLOW}Service name: ${SERVICE_NAME}${NC}"
+        echo -e "${YELLOW}To check status: systemctl status ${SERVICE_NAME}${NC}"
+        echo -e "${YELLOW}To view logs: journalctl -u ${SERVICE_NAME} -f${NC}"
+    else
+        echo -e "${RED}Error: Failed to start WaterWall service${NC}"
+        echo -e "${YELLOW}Check logs with: journalctl -u ${SERVICE_NAME} -n 50${NC}"
     fi
     
-    # Start in screen from /waterwall directory
-    cd "$WATERWALL_DIR" || {
-        echo -e "${RED}Error: Cannot access $WATERWALL_DIR${NC}"
-        sleep 2
-        init
-        return
-    }
-    
-    screen -dmS WaterWall ./Waterwall
-    cd "$cur_dir"
-    
-    echo -e "${GREEN}WaterWall tunnel started in screen session!${NC}"
-    echo -e "${YELLOW}To view logs, use: screen -r WaterWall${NC}"
     sleep 2
     init
 }
 
 stop_tunnel() {
-    if screen -list | grep -q "WaterWall"; then
-        screen -X -S WaterWall quit
-        echo -e "${GREEN}WaterWall tunnel stopped!${NC}"
+    if systemctl is-active --quiet ${SERVICE_NAME}; then
+        echo -e "${YELLOW}Stopping WaterWall service...${NC}"
+        sudo systemctl stop ${SERVICE_NAME}
+        echo -e "${GREEN}✓ WaterWall service stopped!${NC}"
     else
-        echo -e "${YELLOW}WaterWall tunnel is not running.${NC}"
+        echo -e "${YELLOW}WaterWall service is not running.${NC}"
     fi
     sleep 2
     init
@@ -573,7 +602,8 @@ stop_tunnel() {
 check_status() {
     clear
     echo -e "${YELLOW}=== WaterWall Status ===${NC}\n"
-    echo -e "${BLUE}Installation Directory: $WATERWALL_DIR${NC}\n"
+    echo -e "${BLUE}Installation Directory: $WATERWALL_DIR${NC}"
+    echo -e "${BLUE}Service Name: ${SERVICE_NAME}${NC}\n"
     
     if [ -f "$WATERWALL_DIR/core.json" ]; then
         echo -e "${GREEN}Core: Installed${NC}"
@@ -590,13 +620,23 @@ check_status() {
     fi
     
     echo ""
-    if screen -list | grep -q "WaterWall"; then
-        echo -e "${GREEN}Tunnel Status: Running${NC}"
-        screen -list | grep WaterWall
+    echo -e "${YELLOW}Service Status:${NC}"
+    if systemctl is-active --quiet ${SERVICE_NAME}; then
+        echo -e "${GREEN}Status: Running${NC}"
+        systemctl status ${SERVICE_NAME} --no-pager -l | head -n 10
+    elif systemctl is-enabled --quiet ${SERVICE_NAME} 2>/dev/null; then
+        echo -e "${RED}Status: Stopped${NC}"
+        systemctl status ${SERVICE_NAME} --no-pager -l | head -n 10 2>/dev/null || echo "Service exists but is not running"
     else
-        echo -e "${RED}Tunnel Status: Stopped${NC}"
+        echo -e "${YELLOW}Status: Service not created${NC}"
     fi
     
+    echo ""
+    echo -e "${YELLOW}Useful commands:${NC}"
+    echo -e "  systemctl status ${SERVICE_NAME}"
+    echo -e "  systemctl start ${SERVICE_NAME}"
+    echo -e "  systemctl stop ${SERVICE_NAME}"
+    echo -e "  journalctl -u ${SERVICE_NAME} -f"
     echo ""
     read -p "Press Enter to continue..."
     init
@@ -642,10 +682,23 @@ unistall() {
     
     echo $'\e[32mUninstalling WaterWall in 3 seconds... \e[0m' && sleep 1 && echo $'\e[32m2... \e[0m' && sleep 1 && echo $'\e[32m1... \e[0m' && sleep 1
     
-    # Stop tunnel
-    if screen -list | grep -q "WaterWall"; then
-        screen -X -S WaterWall quit
-        echo -e "${GREEN}Tunnel stopped${NC}"
+    # Stop and disable service
+    if systemctl is-active --quiet ${SERVICE_NAME} 2>/dev/null; then
+        echo -e "${YELLOW}Stopping service...${NC}"
+        sudo systemctl stop ${SERVICE_NAME}
+    fi
+    
+    if systemctl is-enabled --quiet ${SERVICE_NAME} 2>/dev/null; then
+        echo -e "${YELLOW}Disabling service...${NC}"
+        sudo systemctl disable ${SERVICE_NAME}
+    fi
+    
+    # Remove service file
+    if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
+        echo -e "${YELLOW}Removing service file...${NC}"
+        sudo rm -f /etc/systemd/system/${SERVICE_NAME}.service
+        sudo systemctl daemon-reload
+        echo -e "${GREEN}Service removed${NC}"
     fi
     
     # Remove entire /waterwall directory
