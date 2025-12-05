@@ -22,20 +22,10 @@
 ## 🚀 نصب و اجرا
 
 ```bash
-# دانلود اسکریپت
-wget https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/main/DIGITALVORTX-waterwall.sh
-
-# یا با curl
-curl -O https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/main/DIGITALVORTX-waterwall.sh
 
 # یا دانلود و اجرای مستقیم
 bash <(curl -Ls https://raw.githubusercontent.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall/main/DIGITALVORTX-waterwall.sh)
 
-# یا clone کردن repository
-git clone https://github.com/DIGITALVORTEX-TEAM/DIGITALVORTEX-WaterWall.git
-cd DIGITALVORTEX-WaterWall
-chmod +x DIGITALVORTX-waterwall.sh
-sudo ./DIGITALVORTX-waterwall.sh
 ```
 
 ## 📖 نحوه استفاده
